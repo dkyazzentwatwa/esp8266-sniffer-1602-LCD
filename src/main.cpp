@@ -1,4 +1,6 @@
 #include <Arduino.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
 
 extern "C" {
   #include <user_interface.h>
@@ -10,6 +12,9 @@ extern "C" {
 #define TYPE_CONTROL          0x01
 #define TYPE_DATA             0x02
 #define SUBTYPE_PROBE_REQUEST 0x04
+
+#define CHANNEL_HOP_INTERVAL_MS   1000
+static os_timer_t channelHop_timer;
 
 struct RxControl {
  signed rssi:8; // signal intensity of packet
@@ -45,8 +50,10 @@ struct SnifferPacket{
     uint16_t len;
 };
 
+// LCD object
+LiquidCrystal_I2C lcd(0x27, 16, 2); // Set the LCD address to 0x27 for a 16 chars and 2 line display
+
 // Declare each custom function (excluding built-in, such as setup and loop) before it will be called.
-// https://docs.platformio.org/en/latest/faq.html#convert-arduino-file-to-c-manually
 static void showMetadata(SnifferPacket *snifferPacket);
 static void ICACHE_FLASH_ATTR sniffer_callback(uint8_t *buffer, uint16_t length);
 static void printDataSpan(uint16_t start, uint16_t size, uint8_t* data);
@@ -57,11 +64,8 @@ static void showMetadata(SnifferPacket *snifferPacket) {
 
   unsigned int frameControl = ((unsigned int)snifferPacket->data[1] << 8) + snifferPacket->data[0];
 
-  uint8_t version      = (frameControl & 0b0000000000000011) >> 0;
   uint8_t frameType    = (frameControl & 0b0000000000001100) >> 2;
   uint8_t frameSubType = (frameControl & 0b0000000011110000) >> 4;
-  uint8_t toDS         = (frameControl & 0b0000000100000000) >> 8;
-  uint8_t fromDS       = (frameControl & 0b0000001000000000) >> 9;
 
   // Only look for probe request packets
   if (frameType != TYPE_MANAGEMENT ||
@@ -84,6 +88,20 @@ static void showMetadata(SnifferPacket *snifferPacket) {
   printDataSpan(26, SSID_length, snifferPacket->data);
 
   Serial.println();
+
+  // Update the LCD display with the RSSI, Channel, and SSID
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("RSSI: ");
+  lcd.print(snifferPacket->rx_ctrl.rssi, DEC);
+  lcd.print(" Ch: ");
+  lcd.print(wifi_get_channel());
+
+  lcd.setCursor(0, 1);
+  lcd.print("SSID: ");
+  for (uint8_t i = 0; i < SSID_length; i++) {
+    lcd.print((char)snifferPacket->data[26 + i]);
+  }
 }
 
 /**
@@ -104,15 +122,11 @@ static void getMAC(char *addr, uint8_t* data, uint16_t offset) {
   sprintf(addr, "%02x:%02x:%02x:%02x:%02x:%02x", data[offset+0], data[offset+1], data[offset+2], data[offset+3], data[offset+4], data[offset+5]);
 }
 
-#define CHANNEL_HOP_INTERVAL_MS   1000
-static os_timer_t channelHop_timer;
-
 /**
  * Callback for channel hoping
  */
-void channelHop()
-{
-  // hoping channels 1-13
+void channelHop() {
+  // hopping channels 1-13
   uint8 new_channel = wifi_get_channel() + 1;
   if (new_channel > 13) {
     new_channel = 1;
@@ -120,25 +134,26 @@ void channelHop()
   wifi_set_channel(new_channel);
 }
 
-#define DISABLE 0
-#define ENABLE  1
-
 void setup() {
   // set the WiFi chip to "promiscuous" mode aka monitor mode
   Serial.begin(115200);
   delay(10);
   wifi_set_opmode(STATION_MODE);
   wifi_set_channel(1);
-  wifi_promiscuous_enable(DISABLE);
+  wifi_promiscuous_enable(0); // DISABLE
   delay(10);
   wifi_set_promiscuous_rx_cb(sniffer_callback);
   delay(10);
-  wifi_promiscuous_enable(ENABLE);
+  wifi_promiscuous_enable(1); // ENABLE
 
   // setup the channel hoping callback timer
   os_timer_disarm(&channelHop_timer);
   os_timer_setfn(&channelHop_timer, (os_timer_func_t *) channelHop, NULL);
   os_timer_arm(&channelHop_timer, CHANNEL_HOP_INTERVAL_MS, 1);
+
+  // Initialize the LCD
+  lcd.init();
+  lcd.backlight();
 }
 
 void loop() {
