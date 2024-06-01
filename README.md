@@ -5,21 +5,21 @@ This is a fork of https://github.com/kalanda/esp8266-sniffer
 
 I was having an issue using devices away from my computer and wanting to visualize the data, so I implemented a spare LCD screen I had lying around with a Node MCU ESP8266. 
 
-##Wiring:
+## Wiring:
 
 VCC of the LCD to 3V3 (3.3V) on the NodeMCU.
 GND of the LCD to GND on the NodeMCU.
 SDA of the LCD to D2 (GPIO 4) on the NodeMCU.
 SCL of the LCD to D1 (GPIO 5) on the NodeMCU.
 
-##To-Do
+## To-Do
 -improve the display format
 -add buttons to toggle different functions?
 -add microSD to save data when in the field
 -create webserver to host logs
 -led lights (why not)
 
-##Original Description
+## Original Description
 
 This is only an easy experiment which uses the ESP8266 wifi module to look for near smartphones around you. You can do this very easily with any computer and some software but this is a good way to learn the possibilities of these tiny ESP8266 modules.
 
